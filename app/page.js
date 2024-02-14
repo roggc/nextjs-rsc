@@ -1,6 +1,5 @@
-import RSC from "./rsc";
-import { greeting } from "@/app/actions/greeting";
+import Client1 from "@/app/components/client-1";
 
 export default function Home() {
-  return <RSC action={greeting} />;
+  return <Client1 />;
 }

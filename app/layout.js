@@ -1,4 +1,5 @@
 import { Inter } from "next/font/google";
+import { greeting } from "@/app/actions/greeting"; // <-- this is necessary, if not fails to compile
 
 const inter = Inter({ subsets: ["latin"] });
 

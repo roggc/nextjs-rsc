@@ -1,5 +1,5 @@
 "use server";
-import Greeting from "@/app/greeting";
+import Greeting from "@/app/action-components/greeting";
 
 export async function greeting() {
   const greeting = await new Promise((r) => {
