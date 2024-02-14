@@ -1,5 +1,5 @@
 "use client";
 
-export default function Greeting({ greeting }) {
-  return <>{greeting}</>;
+export default function Greeting({ username }) {
+  return <>hello {username}</>;
 }

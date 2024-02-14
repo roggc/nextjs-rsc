@@ -1,9 +1,17 @@
 "use server";
 import Greeting from "@/app/action-components/greeting";
 
-export async function greeting() {
-  const greeting = await new Promise((r) => {
-    setTimeout(() => r("bye!!"), 500);
+const users = [{ id: 1, username: "roggc" }];
+
+export async function greeting({ userId }) {
+  const username = await new Promise((r) => {
+    setTimeout(() => {
+      const user = users.find((u) => u.id === userId);
+      if (user) {
+        r(user.username);
+      }
+    }, 500);
   });
-  return <Greeting greeting={greeting} />;
+
+  return <Greeting username={username} />;
 }
