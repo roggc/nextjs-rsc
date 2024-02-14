@@ -1,17 +1,22 @@
 "use server";
 import Greeting from "@/app/action-components/greeting";
+import MyError from "@/app/action-components/my-error";
 
 const users = [{ id: 1, username: "roggc" }];
 
 export async function greeting({ userId }) {
-  const username = await new Promise((r) => {
-    setTimeout(() => {
-      const user = users.find((u) => u.id === userId);
-      if (user) {
-        r(user.username);
-      }
-    }, 500);
-  });
-
-  return <Greeting username={username} />;
+  try {
+    const username = await new Promise((r) => {
+      setTimeout(() => {
+        const user = users.find((u) => u.id === userId);
+        if (user) {
+          r(user.username);
+        }
+      }, 500);
+    });
+    // throw new Error("crash!");
+    return <Greeting username={username} />;
+  } catch (error) {
+    return <MyError errorMessage={error.message} />;
+  }
 }
