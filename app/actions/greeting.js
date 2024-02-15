@@ -2,7 +2,10 @@
 import Greeting from "@/app/action-components/greeting";
 import MyError from "@/app/action-components/my-error";
 
-const users = [{ id: 1, username: "roggc" }];
+const users = [
+  { id: 1, username: "roggc" },
+  { id: 2, username: "roger" },
+];
 
 export async function greeting({ userId }) {
   try {
