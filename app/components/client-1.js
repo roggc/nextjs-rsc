@@ -1,4 +1,5 @@
 "use client";
+
 import Action from "@/app/action";
 import { greeting } from "@/app/actions/greeting";
 import { useState } from "react";

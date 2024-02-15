@@ -10,13 +10,14 @@ import { Suspense, useState, useEffect } from "react";
 export default function Action({
   action,
   fallback = <>loading...</>,
+  softKey,
   ...props
 }) {
   const [JSX, setJSX] = useState(fallback);
 
   useEffect(() => {
     setJSX(<Suspense fallback={fallback}>{action(props)}</Suspense>);
-  }, []);
+  }, [softKey]);
 
   return JSX;
 }
@@ -29,9 +30,25 @@ Then you can use it like this in any client component (also server component):
 
 import Action from "@/app/action";
 import { greeting } from "@/app/actions/greeting";
+import { useState } from "react";
 
 export default function Client1() {
-  return <Action action={greeting} userId={1} />;
+  const [userId, setUserId] = useState(1);
+  const [softKey, setSoftKey] = useState(0);
+
+  return (
+    <>
+      <Action action={greeting} userId={userId} softKey={softKey} />
+      <button
+        onClick={() => {
+          setUserId(2);
+          setSoftKey((k) => k + 1);
+        }}
+      >
+        click
+      </button>
+    </>
+  );
 }
 ```
 
@@ -43,7 +60,10 @@ In this case `greeting` action is like this:
 import Greeting from "@/app/action-components/greeting";
 import MyError from "@/app/action-components/my-error";
 
-const users = [{ id: 1, username: "roggc" }];
+const users = [
+  { id: 1, username: "roggc" },
+  { id: 2, username: "roger" },
+];
 
 export async function greeting({ userId }) {
   try {
