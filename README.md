@@ -30,11 +30,15 @@ Then you can use it like this in any client component (also server component):
 
 import Action from "@/app/action";
 import { greeting } from "@/app/actions/greeting";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function Client1() {
   const [userId, setUserId] = useState(1);
   const [softKey, setSoftKey] = useState(0);
+
+  useEffect(() => {
+    setSoftKey((k) => k + 1);
+  }, [userId]);
 
   return (
     <>
@@ -42,7 +46,6 @@ export default function Client1() {
       <button
         onClick={() => {
           setUserId(2);
-          setSoftKey((k) => k + 1);
         }}
       >
         click
