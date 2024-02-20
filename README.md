@@ -6,43 +6,55 @@ In NextJS 14 you can make an `Action` client component like this:
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
+import { usePropsChangedKey } from "@/app/hooks";
 
 export default function Action({
   action,
   fallback = <>loading...</>,
-  softKey,
   ...props
 }) {
   const [JSX, setJSX] = useState(fallback);
+  const propsChangedKey = usePropsChangedKey(...Object.values(props));
 
   useEffect(() => {
     setJSX(<Suspense fallback={fallback}>{action(props)}</Suspense>);
-  }, [softKey]);
+  }, [propsChangedKey, action]);
 
   return JSX;
 }
 ```
 
-Then you can use it like this in any client component (also server component):
+being the hook `usePropsChangedKey` like this:
+
+```javascript
+import { useState, useEffect } from "react";
+
+export function usePropsChangedKey(...args) {
+  const [propsChangedKey, setPropsChangedKey] = useState(0);
+
+  useEffect(() => {
+    setPropsChangedKey((k) => k + 1);
+  }, [...args]);
+
+  return propsChangedKey;
+}
+```
+
+Then you can use the `Action` client component like this in any client component (also server component):
 
 ```javascript
 "use client";
 
 import Action from "@/app/action";
 import { greeting } from "@/app/actions/greeting";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export default function Client1() {
   const [userId, setUserId] = useState(1);
-  const [softKey, setSoftKey] = useState(0);
-
-  useEffect(() => {
-    setSoftKey((k) => k + 1);
-  }, [userId]);
 
   return (
     <>
-      <Action action={greeting} userId={userId} softKey={softKey} />
+      <Action action={greeting} userId={userId} />
       <button
         onClick={() => {
           setUserId(2);
@@ -63,6 +75,8 @@ In this case `greeting` action is like this:
 import Greeting from "@/app/action-components/greeting";
 import MyError from "@/app/action-components/my-error";
 
+const DELAY = 500;
+
 const users = [
   { id: 1, username: "roggc" },
   { id: 2, username: "roger" },
@@ -76,7 +90,7 @@ export async function greeting({ userId }) {
         if (user) {
           r(user.username);
         }
-      }, 500);
+      }, DELAY);
     });
 
     // throw new Error("crash!");
