@@ -3,6 +3,8 @@
 import Greeting from "@/app/action-components/greeting";
 import MyError from "@/app/action-components/my-error";
 
+const DELAY = 500;
+
 const users = [
   { id: 1, username: "roggc" },
   { id: 2, username: "roger" },
@@ -16,8 +18,9 @@ export async function greeting({ userId }) {
         if (user) {
           r(user.username);
         }
-      }, 500);
+      }, DELAY);
     });
+
     // throw new Error("crash!");
     return <Greeting username={username} />;
   } catch (error) {
