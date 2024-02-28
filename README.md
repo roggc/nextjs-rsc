@@ -1,73 +1,24 @@
 # Action client component in NextJS 14
 
-In NextJS 14 you can make an `Action` client component like this:
+What we want:
+
+1. We are on a client component and we want to render another client component with data passed as props, but this data must be fetched from the server. How do we do it?
 
 ```javascript
 "use client";
+import AnotherClientComponent from "./another-client-component";
 
-import { Suspense, useState, useEffect } from "react";
-import { usePropsChangedKey } from "@/app/hooks";
-
-export default function Action({
-  action,
-  fallback = <>loading...</>,
-  ...props
-}) {
-  const [JSX, setJSX] = useState(fallback);
-  const propsChangedKey = usePropsChangedKey(...Object.values(props));
-
-  useEffect(() => {
-    setJSX(<Suspense fallback={fallback}>{action(props)}</Suspense>);
-  }, [propsChangedKey, action]);
-
-  return JSX;
+export default function AClientComponent(){
+  // ...
+  return <AnotherClientComponent prop1={/*this data must be fetched in the server*/} /*more props*/>;
 }
 ```
 
-being the hook `usePropsChangedKey` like this:
+The idea:
 
-```javascript
-import { useState, useEffect } from "react";
+2. Use server actions to return a client component with data fetched in the server passed as props.
 
-export function usePropsChangedKey(...args) {
-  const [propsChangedKey, setPropsChangedKey] = useState(0);
-
-  useEffect(() => {
-    setPropsChangedKey((k) => k + 1);
-  }, [...args]);
-
-  return propsChangedKey;
-}
-```
-
-Then you can use the `Action` client component like this in any client component (also server component):
-
-```javascript
-"use client";
-
-import Action from "@/app/action";
-import { greeting } from "@/app/actions/greeting";
-import { useState } from "react";
-
-export default function Client1() {
-  const [userId, setUserId] = useState(1);
-
-  return (
-    <>
-      <Action action={greeting} userId={userId} />
-      <button
-        onClick={() => {
-          setUserId(2);
-        }}
-      >
-        click
-      </button>
-    </>
-  );
-}
-```
-
-In this case `greeting` action is like this:
+So server action is like this, for example:
 
 ```javascript
 "use server";
@@ -101,7 +52,7 @@ export async function greeting({ userId }) {
 }
 ```
 
-and `Greeting` client component is like this:
+`Greeting` and `MyError` are simple client components that accepts data as props. Like this:
 
 ```javascript
 "use client";
@@ -111,17 +62,354 @@ export default function Greeting({ username }) {
 }
 ```
 
-You call your `Client1` component from `Home` server component:
+and
 
 ```javascript
-import Client1 from "@/app/components/client-1";
+"use client";
 
-export default function Home() {
-  return <Client1 />;
+export default function MyError({ errorMessage }) {
+  return <>Something went wrong: {errorMessage}</>;
 }
 ```
 
-But for this to work you must also import `greeting` action in `Home` server component or in `RootLayout` server component, like this:
+3. How do we call these server actions that return client components from within another client component?
+
+```javascript
+"use client";
+import { greeting } from "@/app/actions";
+import { Suspense } from "react";
+
+export default function AClientComponent() {
+  return (
+    <Suspense fallback={<>loading...</>}>{greeting({ userId: 1 })}</Suspense>
+  );
+}
+```
+
+The above works, but gives the following warning: `Warning: Cannot update a component ('Router') while rendering a different component ('Client1'). To locate the bad setState() call inside 'Client1', follow the stack trace as described in https://reactjs.org/link/setstate-in-render`.
+
+4. How do we get ride off of this warning?
+
+The way I have found is with this:
+
+```javascript
+"use client";
+import { greeting } from "@/app/actions";
+import { Suspense } from "react";
+
+const callActionAsync = (action, props) =>
+  new Promise((r) => setTimeout(async () => r(await action(props))));
+
+const Error = ({ errorMessage }) => <>Something went wrong: {errorMessage}</>;
+
+const getReader = () => {
+  let done = false;
+  let promise = null;
+  let value;
+  return {
+    read: (action, props) => {
+      if (done) {
+        return value;
+      }
+      if (promise) {
+        throw promise;
+      }
+      promise = new Promise(async (resolve) => {
+        try {
+          value = await callActionAsync(action, props);
+        } catch (error) {
+          value = <Error errorMessage={error.message} />;
+        } finally {
+          done = true;
+          promise = null;
+          resolve();
+        }
+      });
+
+      throw promise;
+    },
+  };
+};
+
+const Read = ({ action, props, reader }) => {
+  return reader.read(action, props);
+};
+
+export default function AClientComponent() {
+  return (
+    <Suspense fallback={<>loading...</>}>
+      <Read action={greeting} props={{ userId }} reader={getReader()} />
+    </Suspense>
+  );
+}
+```
+
+5. So we can make a client component like this:
+
+```javascript
+"use client";
+
+import { Suspense, useMemo } from "react";
+import { usePropsChangedKey } from "@/app/hooks";
+
+const callActionAsync = (action, props) =>
+  new Promise((r) => setTimeout(async () => r(await action(props))));
+
+const Error = ({ errorMessage }) => <>Something went wrong: {errorMessage}</>;
+
+const getReader = () => {
+  let done = false;
+  let promise = null;
+  let value;
+  return {
+    read: (action, props) => {
+      if (done) {
+        return value;
+      }
+      if (promise) {
+        throw promise;
+      }
+      promise = new Promise(async (resolve) => {
+        try {
+          value = await callActionAsync(action, props);
+        } catch (error) {
+          value = <Error errorMessage={error.message} />;
+        } finally {
+          done = true;
+          promise = null;
+          resolve();
+        }
+      });
+
+      throw promise;
+    },
+  };
+};
+
+const Read = ({ action, props, reader }) => {
+  return reader.read(action, props);
+};
+
+export default function Action({
+  action,
+  children = <>loading...</>,
+  ...props
+}) {
+  const propsChangedKey = usePropsChangedKey(...Object.values(props));
+  const reader = useMemo(() => getReader(), [propsChangedKey]);
+
+  return (
+    <Suspense fallback={children}>
+      <Read action={action} props={props} reader={reader} />
+    </Suspense>
+  );
+}
+```
+
+being the hook `usePropsChangedKey` like this:
+
+```javascript
+import { useState, useEffect, useRef } from "react";
+
+export function usePropsChangedKey(...args) {
+  const [propsChangedKey, setPropsChangedKey] = useState(0);
+  const isFirstRenderRef = useRef(false);
+
+  useEffect(() => {
+    isFirstRenderRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!isFirstRenderRef.current) {
+      setPropsChangedKey((k) => k + 1);
+    } else {
+      isFirstRenderRef.current = false;
+    }
+  }, [...args]);
+
+  return propsChangedKey;
+}
+```
+
+6. Now when we want to call a server action that returns a client component we do it with the `Action` client component we have just defined:
+
+```javascript
+"use client";
+
+import Action from "@/app/action";
+import { greeting } from "@/app/actions/greeting";
+import { useState } from "react";
+
+export default function Client1() {
+  const [userId, setUserId] = useState(1);
+
+  return (
+    <>
+      <Action action={greeting} userId={userId} />
+      <button
+        onClick={() => {
+          setUserId(2);
+        }}
+      >
+        click
+      </button>
+    </>
+  );
+}
+```
+
+7. What if we want to use `useSWR`?
+
+When using `useSWR` the `Action` client component becomes:
+
+```javascript
+"use client";
+
+import { Suspense, useMemo } from "react";
+import { usePropsChangedKey } from "@/app/hooks";
+import useSWR from "swr";
+
+const callActionAsync = (action, props) =>
+  new Promise((r) => setTimeout(async () => r(await action(props))));
+
+export default function Action({
+  action,
+  children = <>loading...</>,
+  ...props
+}) {
+  const propsChangedKey = usePropsChangedKey(...Object.values(props));
+
+  const propsForSWR = useMemo(() => props, [propsChangedKey]);
+  const swrArgs = useMemo(() => [action, propsForSWR], [action, propsForSWR]);
+  const fetcher = ([action, props]) => callActionAsync(action, props);
+  const { data } = useSWR(swrArgs, fetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    suspense: true,
+  });
+
+  return <Suspense fallback={children}>{data}</Suspense>;
+}
+```
+
+8. Now we can combine the two definitions of `Action` client component we have shown (one using `useSWR` and other not) into one:
+
+```javascript
+"use client";
+
+import { Suspense, useMemo } from "react";
+import { usePropsChangedKey } from "@/app/hooks";
+import useSWR from "swr";
+
+const callActionAsync = (action, props) =>
+  new Promise((r) => setTimeout(async () => r(await action(props))));
+
+const Error = ({ errorMessage }) => <>Something went wrong: {errorMessage}</>;
+
+const getReader = () => {
+  let done = false;
+  let promise = null;
+  let value;
+  return {
+    read: (action, props) => {
+      if (done) {
+        return value;
+      }
+      if (promise) {
+        throw promise;
+      }
+      promise = new Promise(async (resolve) => {
+        try {
+          value = await callActionAsync(action, props);
+        } catch (error) {
+          value = <Error errorMessage={error.message} />;
+        } finally {
+          done = true;
+          promise = null;
+          resolve();
+        }
+      });
+
+      throw promise;
+    },
+  };
+};
+
+const Read = ({ action, props, reader }) => {
+  return reader.read(action, props);
+};
+
+export default function Action({
+  action,
+  children = <>loading...</>,
+  isSWR = false,
+  ...props
+}) {
+  const propsChangedKey = usePropsChangedKey(...Object.values(props));
+
+  const reader = useMemo(() => getReader(), [propsChangedKey]);
+
+  const propsForSWR = useMemo(() => props, [propsChangedKey]);
+  const swrArgs = useMemo(() => [action, propsForSWR], [action, propsForSWR]);
+  const fetcher = ([action, props]) => callActionAsync(action, props);
+  const { data } = useSWR(swrArgs, fetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    suspense: true,
+  });
+
+  return (
+    <Suspense fallback={children}>
+      {isSWR ? data : <Read action={action} props={props} reader={reader} />}
+    </Suspense>
+  );
+}
+```
+
+## Do not call `Action` component directly on intial render.
+
+We must do something like this for example:
+
+```javascript
+"use client";
+
+import Client1 from "@/app/components/client-1";
+import { useState } from "react";
+
+export default function Home() {
+  const [isStart, setIsStart] = useState(false);
+  return (
+    <>
+      <button onClick={() => setIsStart(true)}>start</button>
+      {isStart && <Client1 />}
+    </>
+  );
+}
+```
+
+If you do this instead:
+
+```javascript
+"use client";
+
+import Client1 from "@/app/components/client-1";
+
+export default function Home() {
+  return (
+    <>
+      <Client />
+    </>
+  );
+}
+```
+
+you get the following server error:
+
+`⨯ unhandledRejection: Error: Server Functions cannot be called during initial render. This would create a fetch waterfall. Try to use a Server Component to pass data to Client Components instead.`.
+
+## Important final note.
+
+You must import the `greeting` action, in this case, in the `RootLayout` server component, like this:
 
 ```javascript
 import { Inter } from "next/font/google";
@@ -143,22 +431,19 @@ export default function RootLayout({ children }) {
 }
 ```
 
-If you don't do this last step you get following server error:
+If you don't do this you get the following error:
 
-`⨯ Error: Could not find the module "C:\Users\roggc\dev\nextjs\test1\app\action-components\greeting.js#" in the React Client Manifest. This is probably a bug in the React Server Components bundler. at stringify (<anonymous>)`
+`⨯ Error: Could not find the module "C:\Users\roggc\dev\nextjs\test1\app\action-components\greeting.js#" in the React Client Manifest. This is probably a bug in the React Server Components bundler`.
 
-The idea is any action returns a client component, and are called through `Action` client component. `Action` client component accepts an action prop plus any number of other props which will passed to the action itself (except functions, which cannot be stringified; for this last case you must use a library like [react-context-slices](https://react-context-slices.github.io/) to store the functions in the global shared state before calling the `Action` component and recovering its value in the `Greeting` client component).
+This happens in NextJS when a client component is only imported in a server action. In this case we were importing the `Greeting` client component in the `greeting` server action.
 
-This way of coding comes from [this setup](https://github.com/roggc/rsc-ssr), also explained [here](https://rsc-setup.netlify.app/).
+As I have said the workaround is to import the server action in the `RootLayout` server component. There is an [open issue](https://github.com/vercel/next.js/issues/58125) about this.
 
-Now, with this shown here, you can also code like this in NextJS 14.
+## Summary
 
-There is also a `MyError` client component we return in case of error in the server action:
-
-```javascript
-"use client";
-
-export default function MyError({ errorMessage }) {
-  return <>Something went wrong: {errorMessage}</>;
-}
-```
+1. We want to fetch data from the server and pass it as props to client components.
+2. For this, we use server actions that return client components.
+3. We call these server actions with the `Action` client component we defined.
+4. The `Action` client component we have defined works also when using `useSWR`.
+5. Do not call the `Action` component on initial render.
+6. You must import the server action in the `RootLayout` server component.
