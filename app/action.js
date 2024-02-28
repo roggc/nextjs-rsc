@@ -14,7 +14,7 @@ const getReader = () => {
   let promise = null;
   let value;
   return {
-    read: (action, props) => {
+    read: (fetcher) => {
       if (done) {
         return value;
       }
@@ -23,7 +23,7 @@ const getReader = () => {
       }
       promise = new Promise(async (resolve) => {
         try {
-          value = await callActionAsync(action, props);
+          value = await fetcher();
         } catch (error) {
           value = <Error errorMessage={error.message} />;
         } finally {
@@ -38,24 +38,25 @@ const getReader = () => {
   };
 };
 
-const Read = ({ action, props, reader }) => {
-  return reader.read(action, props);
+const Read = ({ fetcher, reader }) => {
+  return reader.read(fetcher);
 };
 
 export default function Action({
   action,
   children = <>loading...</>,
-  isSWR = true,
+  isSWR = false,
   ...props
 }) {
   const propsChangedKey = usePropsChangedKey(...Object.values(props));
 
+  const fetcher = () => callActionAsync(action, props);
   const reader = useMemo(() => getReader(), [propsChangedKey]);
 
   const propsForSWR = useMemo(() => props, [propsChangedKey]);
   const swrArgs = useMemo(() => [action, propsForSWR], [action, propsForSWR]);
-  const fetcher = ([action, props]) => callActionAsync(action, props);
-  const { data } = useSWR(swrArgs, fetcher, {
+  const fetcherSWR = ([action, props]) => fetcher(action, props);
+  const { data } = useSWR(swrArgs, fetcherSWR, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     suspense: true,
@@ -63,8 +64,7 @@ export default function Action({
 
   return (
     <Suspense fallback={children}>
-      {isSWR ? data : <Read action={action} props={props} reader={reader} />}
-      {/* <Read action={action} props={props} reader={reader} /> */}
+      {isSWR ? data : <Read fetcher={fetcher} reader={reader} />}
     </Suspense>
   );
 }
