@@ -3,7 +3,7 @@
 import Greeting from "@/app/action-components/greeting";
 import MyError from "@/app/action-components/my-error";
 
-const DELAY = 500;
+const DELAY = 1000;
 
 const users = [
   { id: 1, username: "roggc" },

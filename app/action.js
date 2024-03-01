@@ -4,8 +4,10 @@ import { Suspense, useMemo } from "react";
 import { usePropsChangedKey } from "@/app/hooks";
 import useSWR from "swr";
 
-const callActionAsync = (action, props) =>
+const fetcher = (action, props) =>
   new Promise((r) => setTimeout(async () => r(await action(props))));
+
+const fetcherSWR = ([, action, props]) => fetcher(action, props);
 
 const Error = ({ errorMessage }) => <>Something went wrong: {errorMessage}</>;
 
@@ -50,12 +52,13 @@ export default function Action({
 }) {
   const propsChangedKey = usePropsChangedKey(...Object.values(props));
 
-  const fetcher = () => callActionAsync(action, props);
   const reader = useMemo(() => getReader(), [propsChangedKey]);
 
   const propsForSWR = useMemo(() => props, [propsChangedKey]);
-  const swrArgs = useMemo(() => [action, propsForSWR], [action, propsForSWR]);
-  const fetcherSWR = ([action, props]) => fetcher(action, props);
+  const swrArgs = useMemo(
+    () => [propsChangedKey, action, propsForSWR],
+    [action, propsForSWR, propsChangedKey]
+  );
   const { data } = useSWR(swrArgs, fetcherSWR, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
@@ -64,7 +67,11 @@ export default function Action({
 
   return (
     <Suspense fallback={children}>
-      {isSWR ? data : <Read fetcher={fetcher} reader={reader} />}
+      {isSWR ? (
+        data
+      ) : (
+        <Read fetcher={() => fetcher(action, props)} reader={reader} />
+      )}
     </Suspense>
   );
 }
