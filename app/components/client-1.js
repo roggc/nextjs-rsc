@@ -9,7 +9,7 @@ export default function Client1() {
 
   return (
     <>
-      <Action action={greeting} userId={userId} isSWR />
+      <Action action={greeting} userId={userId} />
       <button
         onClick={() => {
           setUserId(2);

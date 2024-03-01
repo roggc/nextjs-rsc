@@ -44,6 +44,14 @@ const Read = ({ fetcher, reader }) => {
   return reader.read(fetcher);
 };
 
+const ReadSWR = ({ swrArgs, fetcher }) => {
+  return useSWR(swrArgs, fetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    suspense: true,
+  }).data;
+};
+
 export default function Action({
   action,
   children = <>loading...</>,
@@ -59,16 +67,11 @@ export default function Action({
     () => [propsChangedKey, action, propsForSWR],
     [action, propsForSWR, propsChangedKey]
   );
-  const { data } = useSWR(swrArgs, fetcherSWR, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    suspense: true,
-  });
 
   return (
     <Suspense fallback={children}>
       {isSWR ? (
-        data
+        <ReadSWR swrArgs={swrArgs} fetcher={fetcherSWR} />
       ) : (
         <Read fetcher={() => fetcher(action, props)} reader={reader} />
       )}

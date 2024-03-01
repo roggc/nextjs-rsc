@@ -9,7 +9,6 @@ export default function Home() {
     <>
       <button onClick={() => setIsStart(true)}>start</button>
       {isStart && <Client1 />}
-      {/* <Client1 /> */}
     </>
   );
 }
