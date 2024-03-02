@@ -269,8 +269,10 @@ import { Suspense, useMemo } from "react";
 import { usePropsChangedKey } from "@/app/hooks";
 import useSWR from "swr";
 
-const callActionAsync = (action, props) =>
+const fetcher = (action, props) =>
   new Promise((r) => setTimeout(async () => r(await action(props))));
+
+const fetcherSWR = ([action, props]) => callActionAsync(action, props);
 
 const ReadSWR = ({ swrArgs, fetcher }) => {
   return useSWR(swrArgs, fetcher, {
@@ -289,11 +291,10 @@ export default function Action({
 
   const propsForSWR = useMemo(() => props, [propsChangedKey]);
   const swrArgs = useMemo(() => [action, propsForSWR], [action, propsForSWR]);
-  const fetcher = ([action, props]) => callActionAsync(action, props);
 
   return (
     <Suspense fallback={children}>
-      <ReadSWR swrArgs={swrArgs} fetcher={fetcher} />
+      <ReadSWR swrArgs={swrArgs} fetcher={fetcherSWR} />
     </Suspense>
   );
 }
