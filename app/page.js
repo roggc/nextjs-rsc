@@ -1,6 +1,6 @@
 "use client";
 
-import Client1 from "@/app/components/client-1";
+import Example from "@/app/components/example";
 import { useState } from "react";
 
 export default function Home() {
@@ -8,7 +8,7 @@ export default function Home() {
   return (
     <>
       <button onClick={() => setIsStart(true)}>start</button>
-      {isStart && <Client1 />}
+      {isStart && <Example />}
     </>
   );
 }

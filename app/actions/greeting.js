@@ -1,9 +1,9 @@
 "use server";
 
-import Greeting from "@/app/action-components/greeting";
-import MyError from "@/app/action-components/my-error";
+import Greeting from "@/app/components/greeting";
+import MyError from "@/app/components/my-error";
 
-const DELAY = 1000;
+const DELAY = 2000;
 
 const users = [
   { id: 1, username: "roggc" },
@@ -12,17 +12,18 @@ const users = [
 
 export async function greeting({ userId }) {
   try {
-    const username = await new Promise((r) => {
+    const usernamePromise = new Promise((resolve, reject) => {
       setTimeout(() => {
         const user = users.find((u) => u.id === userId);
         if (user) {
-          r(user.username);
+          resolve(user.username);
+        } else {
+          reject(new Error("User not found"));
         }
       }, DELAY);
     });
 
-    // throw new Error("crash!");
-    return <Greeting username={username} />;
+    return <Greeting usernamePromise={usernamePromise} />;
   } catch (error) {
     return <MyError errorMessage={error.message} />;
   }

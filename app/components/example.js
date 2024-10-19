@@ -4,7 +4,7 @@ import Action from "@/app/action";
 import { greeting } from "@/app/actions/greeting";
 import { useState } from "react";
 
-export default function Client1() {
+export default function Example() {
   const [userId, setUserId] = useState(1);
 
   return (
@@ -12,7 +12,7 @@ export default function Client1() {
       <Action action={greeting} userId={userId} />
       <button
         onClick={() => {
-          setUserId(2);
+          setUserId((currentValue) => currentValue + 1);
         }}
       >
         click
