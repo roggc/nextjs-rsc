@@ -1,14 +1,11 @@
-"use client";
+import Home from "@/app/components/home";
+import { greeting } from "./actions/greeting";
 
-import Example from "@/app/components/example";
-import { useState } from "react";
-
-export default function Home() {
-  const [isStart, setIsStart] = useState(false);
+export default function Page() {
   return (
     <>
-      <button onClick={() => setIsStart(true)}>start</button>
-      {isStart && <Example />}
+      {greeting({ userId: 1 })}
+      <Home />
     </>
   );
 }

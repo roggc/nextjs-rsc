@@ -23,10 +23,10 @@ So server action is like this, for example:
 ```javascript
 "use server";
 
-import Greeting from "@/app/action-components/greeting";
-import MyError from "@/app/action-components/my-error";
+import Greeting from "@/app/components/greeting";
+import MyError from "@/app/components/my-error";
 
-const DELAY = 500;
+const DELAY = 2000;
 
 const users = [
   { id: 1, username: "roggc" },
@@ -35,30 +35,42 @@ const users = [
 
 export async function greeting({ userId }) {
   try {
-    const username = await new Promise((r) => {
+    const usernamePromise = new Promise((resolve, reject) => {
       setTimeout(() => {
         const user = users.find((u) => u.id === userId);
         if (user) {
-          r(user.username);
+          resolve(user.username);
+        } else {
+          reject(new Error("User not found"));
         }
       }, DELAY);
     });
 
-    // throw new Error("crash!");
-    return <Greeting username={username} />;
+    return <Greeting usernamePromise={usernamePromise} />;
   } catch (error) {
     return <MyError errorMessage={error.message} />;
   }
 }
 ```
 
-`Greeting` and `MyError` are simple client components that accepts data as props. Like this:
+`Greeting` and `MyError` are client components that accepts data as props. Like this:
 
 ```javascript
 "use client";
 
-export default function Greeting({ username }) {
-  return <>hello {username}</>;
+import { Suspense } from "react";
+import ErrorBoundary from "../error-boundary";
+import Counter from "./counter";
+
+export default function Greeting({ usernamePromise }) {
+  return (
+    <>
+      <ErrorBoundary>
+        <Suspense fallback={<>Loading...</>}>Hello {usernamePromise}</Suspense>
+      </ErrorBoundary>
+      <Counter />
+    </>
+  );
 }
 ```
 
@@ -68,7 +80,12 @@ and
 "use client";
 
 export default function MyError({ errorMessage }) {
-  return <>Something went wrong: {errorMessage}</>;
+  return (
+    <div>
+      <h2>Error</h2>
+      <p>{errorMessage}</p>
+    </div>
+  );
 }
 ```
 
@@ -90,148 +107,49 @@ The above works, but gives the following warning: `Warning: Cannot update a comp
 
 4. How do we get ride off of this warning?
 
-The way I have found is with this:
-
-```javascript
-"use client";
-import { greeting } from "@/app/actions";
-import { Suspense } from "react";
-
-const callActionAsync = (action, props) =>
-  new Promise((r) => setTimeout(async () => r(await action(props))));
-
-const Error = ({ errorMessage }) => <>Something went wrong: {errorMessage}</>;
-
-const getReader = () => {
-  let done = false;
-  let promise = null;
-  let value;
-  return {
-    read: (action, props) => {
-      if (done) {
-        return value;
-      }
-      if (promise) {
-        throw promise;
-      }
-      promise = new Promise(async (resolve) => {
-        try {
-          value = await callActionAsync(action, props);
-        } catch (error) {
-          value = <Error errorMessage={error.message} />;
-        } finally {
-          done = true;
-          promise = null;
-          resolve();
-        }
-      });
-
-      throw promise;
-    },
-  };
-};
-
-const Read = ({ action, props, reader }) => {
-  return reader.read(action, props);
-};
-
-export default function AClientComponent() {
-  return (
-    <Suspense fallback={<>loading...</>}>
-      <Read action={greeting} props={{ userId }} reader={getReader()} />
-    </Suspense>
-  );
-}
-```
-
-5. So we can make a client component like this:
+The way I have found is with the `Action` client component:
 
 ```javascript
 "use client";
 
 import { Suspense, useMemo } from "react";
-import { usePropsChangedKey } from "@/app/hooks";
 
-const callActionAsync = (action, props) =>
-  new Promise((r) => setTimeout(async () => r(await action(props))));
-
-const Error = ({ errorMessage }) => <>Something went wrong: {errorMessage}</>;
-
-const getReader = () => {
-  let done = false;
-  let promise = null;
-  let value;
-  return {
-    read: (action, props) => {
-      if (done) {
-        return value;
-      }
-      if (promise) {
-        throw promise;
-      }
-      promise = new Promise(async (resolve) => {
-        try {
-          value = await callActionAsync(action, props);
-        } catch (error) {
-          value = <Error errorMessage={error.message} />;
-        } finally {
-          done = true;
-          promise = null;
-          resolve();
-        }
-      });
-
-      throw promise;
-    },
-  };
-};
-
-const Read = ({ action, props, reader }) => {
-  return reader.read(action, props);
+const Caller = ({ action, props, call }) => {
+  return call(action, props);
 };
 
 export default function Action({
   action,
-  children = <>loading...</>,
+  children = <>Loading...</>,
   ...props
 }) {
-  const propsChangedKey = usePropsChangedKey(...Object.values(props));
-  const reader = useMemo(() => getReader(), [propsChangedKey]);
+  const call = useMemo(() => {
+    let result;
+    let promise;
+    return (action, props) => {
+      if (result !== undefined) {
+        return result;
+      }
+      if (!promise) {
+        promise = Promise.resolve()
+          .then(() => action(props))
+          .then((res) => {
+            result = res;
+          });
+      }
+      throw promise;
+    };
+  }, [...Object.values(props)]);
 
   return (
     <Suspense fallback={children}>
-      <Read action={action} props={props} reader={reader} />
+      <Caller action={action} props={props} call={call} />
     </Suspense>
   );
 }
 ```
 
-being the hook `usePropsChangedKey` like this:
-
-```javascript
-import { useState, useEffect, useRef } from "react";
-
-export function usePropsChangedKey(...args) {
-  const [propsChangedKey, setPropsChangedKey] = useState(0);
-  const isFirstRenderRef = useRef(false);
-
-  useEffect(() => {
-    isFirstRenderRef.current = true;
-  }, []);
-
-  useEffect(() => {
-    if (!isFirstRenderRef.current) {
-      setPropsChangedKey((k) => k + 1);
-    } else {
-      isFirstRenderRef.current = false;
-    }
-  }, [...args]);
-
-  return propsChangedKey;
-}
-```
-
-6. Now when we want to call a server action that returns a client component we do it with the `Action` client component we have just defined:
+5. Now when we want to call a server action that returns a client component we do it with the `Action` client component we have just defined:
 
 ```javascript
 "use client";
@@ -240,7 +158,7 @@ import Action from "@/app/action";
 import { greeting } from "@/app/actions/greeting";
 import { useState } from "react";
 
-export default function Client1() {
+export default function Example() {
   const [userId, setUserId] = useState(1);
 
   return (
@@ -248,139 +166,12 @@ export default function Client1() {
       <Action action={greeting} userId={userId} />
       <button
         onClick={() => {
-          setUserId(2);
+          setUserId((currentValue) => currentValue + 1);
         }}
       >
         click
       </button>
     </>
-  );
-}
-```
-
-7. What if we want to use `useSWR`?
-
-When using `useSWR` the `Action` client component becomes:
-
-```javascript
-"use client";
-
-import { Suspense, useMemo } from "react";
-import { usePropsChangedKey } from "@/app/hooks";
-import useSWR from "swr";
-
-const fetcher = (action, props) =>
-  new Promise((r) => setTimeout(async () => r(await action(props))));
-
-const fetcherSWR = ([action, props]) => callActionAsync(action, props);
-
-const ReadSWR = ({ swrArgs, fetcher }) => {
-  return useSWR(swrArgs, fetcher, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    suspense: true,
-  }).data;
-};
-
-export default function Action({
-  action,
-  children = <>loading...</>,
-  ...props
-}) {
-  const propsChangedKey = usePropsChangedKey(...Object.values(props));
-
-  const propsForSWR = useMemo(() => props, [propsChangedKey]);
-  const swrArgs = useMemo(() => [action, propsForSWR], [action, propsForSWR]);
-
-  return (
-    <Suspense fallback={children}>
-      <ReadSWR swrArgs={swrArgs} fetcher={fetcherSWR} />
-    </Suspense>
-  );
-}
-```
-
-8. Now we can combine the two definitions of `Action` client component we have shown (one using `useSWR` and other not) into one:
-
-```javascript
-"use client";
-
-import { Suspense, useMemo } from "react";
-import { usePropsChangedKey } from "@/app/hooks";
-import useSWR from "swr";
-
-const fetcher = (action, props) =>
-  new Promise((r) => setTimeout(async () => r(await action(props))));
-
-const fetcherSWR = ([, action, props]) => fetcher(action, props);
-
-const Error = ({ errorMessage }) => <>Something went wrong: {errorMessage}</>;
-
-const getReader = () => {
-  let done = false;
-  let promise = null;
-  let value;
-  return {
-    read: (fetcher) => {
-      if (done) {
-        return value;
-      }
-      if (promise) {
-        throw promise;
-      }
-      promise = new Promise(async (resolve) => {
-        try {
-          value = await fetcher();
-        } catch (error) {
-          value = <Error errorMessage={error.message} />;
-        } finally {
-          done = true;
-          promise = null;
-          resolve();
-        }
-      });
-
-      throw promise;
-    },
-  };
-};
-
-const Read = ({ fetcher, reader }) => {
-  return reader.read(fetcher);
-};
-
-const ReadSWR = ({ swrArgs, fetcher }) => {
-  return useSWR(swrArgs, fetcher, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    suspense: true,
-  }).data;
-};
-
-export default function Action({
-  action,
-  children = <>loading...</>,
-  isSWR = false,
-  ...props
-}) {
-  const propsChangedKey = usePropsChangedKey(...Object.values(props));
-
-  const reader = useMemo(() => getReader(), [propsChangedKey]);
-
-  const propsForSWR = useMemo(() => props, [propsChangedKey]);
-  const swrArgs = useMemo(
-    () => [propsChangedKey, action, propsForSWR],
-    [action, propsForSWR, propsChangedKey]
-  );
-
-  return (
-    <Suspense fallback={children}>
-      {isSWR ? (
-        <ReadSWR swrArgs={swrArgs} fetcher={fetcherSWR} />
-      ) : (
-        <Read fetcher={() => fetcher(action, props)} reader={reader} />
-      )}
-    </Suspense>
   );
 }
 ```
@@ -392,15 +183,16 @@ We must do something like this for example:
 ```javascript
 "use client";
 
-import Client1 from "@/app/components/client-1";
+import Example from "@/app/components/example";
 import { useState } from "react";
 
 export default function Home() {
   const [isStart, setIsStart] = useState(false);
+
   return (
     <>
       <button onClick={() => setIsStart(true)}>start</button>
-      {isStart && <Client1 />}
+      {isStart && <Example />}
     </>
   );
 }
@@ -411,20 +203,32 @@ If you do this instead:
 ```javascript
 "use client";
 
-import Client1 from "@/app/components/client-1";
+import Example from "@/app/components/example";
 
 export default function Home() {
-  return (
-    <>
-      <Client />
-    </>
-  );
+  return <Example />;
 }
 ```
 
 you get the following server error:
 
 `⨯ unhandledRejection: Error: Server Functions cannot be called during initial render. This would create a fetch waterfall. Try to use a Server Component to pass data to Client Components instead.`.
+
+If you need to fetch some data on initial render you can do it like this:
+
+```javascript
+import Home from "@/app/components/home";
+import { greeting } from "./actions/greeting";
+
+export default function Page() {
+  return (
+    <>
+      {greeting({ userId: 1 })}
+      <Home />
+    </>
+  );
+}
+```
 
 ## Important final note.
 
@@ -463,6 +267,5 @@ As I have said the workaround is to import the server action in the `RootLayout`
 1. We want to fetch data from the server and pass it as props to client components.
 2. For this, we use server actions that return client components.
 3. We call these server actions with the `Action` client component we defined.
-4. The `Action` client component we have defined works also when using `useSWR`.
-5. Do not call the `Action` component on initial render.
-6. You must import the server action in the `RootLayout` server component.
+4. Do not call the `Action` component on initial render.
+5. You must import the server action in the `RootLayout` server component.
