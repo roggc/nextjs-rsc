@@ -2,9 +2,7 @@
 
 import { Suspense, useMemo } from "react";
 
-const Caller = ({ action, props, call }) => {
-  return call(action, props);
-};
+const Caller = ({ action, props, call }) => call(action, props);
 
 export default function Action({
   action,
@@ -19,11 +17,10 @@ export default function Action({
         return result;
       }
       if (!promise) {
-        promise = Promise.resolve()
-          .then(() => action(props))
-          .then((res) => {
-            result = res;
-          });
+        promise = (async () => {
+          await Promise.resolve();
+          result = await action(props);
+        })();
       }
       throw promise;
     };
